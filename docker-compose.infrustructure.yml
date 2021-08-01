@@ -1,0 +1,110 @@
+version: '3.5'
+services:
+
+  pgsql-db-01:
+    image: postgres:9.6
+    hostname: pgsql-db-01
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rondo
+    command: ["postgres", "-c","shared_buffers=256MB","-c","max_connections=50","-c","max_prepared_transactions=50","-c", "logging_collector=on", "-c", "log_directory=/var/log/postgresql", "-c", "log_filename=postgresql-%Y-%m-%d_%H%M%S.log","-c","log_line_prefix='%a %u %e '"]
+    expose:
+      - "5432"
+    volumes:
+      - /home/rondoit/postgres/data:/var/lib/postgresql/data
+      - /home/rondoit/postgres/log:/var/log/postgresql
+      - /home/rondoit/postgres/backup:/home
+    networks:
+      default:
+        aliases:
+          - pgsql-db-01
+
+  pgadmin4:
+    image: dpage/pgadmin4
+    hostname: pgadmin4
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=mehdichitforoosh@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "127.0.0.1:9000:80"
+    volumes:
+      - /home/rondoit/pgadmin:/var/lib/pgadmin
+    networks:
+      default:
+        aliases:
+          - pgadmin4
+
+  message-broker-01:
+    image: rabbitmq:3.7-management
+    hostname: message-broker-01
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    expose:
+      - "5672"
+    ports:
+      - "127.0.0.1:15672:15672"
+    networks:
+      default:
+        aliases:
+          - message-broker-01
+
+  discovery-server-01:
+    image: dominant/discovery-server
+    hostname: discovery-server-01
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    environment:
+      - SPRING_APPLICATION_NAME=discovery-server
+      - SPRING_PROFILES_ACTIVE=discovery-server-01,dev
+    command: ["mvn", "spring-boot:run"]
+    expose:
+      - "8761"
+    volumes:
+      - maven-home:/root/.m2
+    networks:
+      default:
+        aliases:
+          - discovery-server-01
+
+  config-server-01:
+    image: dominant/config-server
+    hostname: config-server-01
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+    command: ["dockerize","-wait","http://discovery-server-01:8761","-timeout=6m","mvn", "spring-boot:run"]
+    expose:
+      - "8888"
+    volumes:
+      - maven-home:/root/.m2
+    networks:
+      default:
+        aliases:
+          - config-server-01
+    depends_on:
+      - discovery-server-01
+
+volumes:
+  maven-home:
+    name: maven-home
+
+networks:
+  default:
+    external:
+      name: services-network-01
